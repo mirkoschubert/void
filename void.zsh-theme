@@ -1,108 +1,61 @@
+ZSH_THEME_GIT_PROMPT_SHOW="${ZSH_THEME_GIT_PROMPT_SHOW=true}"
+ZSH_THEME_GIT_PROMPT_PREFIX=""
+ZSH_THEME_GIT_PROMPT_SUFFIX=""
+ZSH_THEME_GIT_PROMPT_COLOR="red"
+ZSH_THEME_GIT_PROMPT_UNTRACKED=" ?"
+ZSH_THEME_GIT_PROMPT_ADDED=" +"
+ZSH_THEME_GIT_PROMPT_MODIFIED=" !"
+ZSH_THEME_GIT_PROMPT_RENAMED=" »"
+ZSH_THEME_GIT_PROMPT_DELETED=" ✘"
+ZSH_THEME_GIT_PROMPT_STASHED=" $"
+ZSH_THEME_GIT_PROMPT_UNMERGED=" ="
+ZSH_THEME_GIT_PROMPT_AHEAD=" ⇡"
+ZSH_THEME_GIT_PROMPT_BEHIND=" ⇣"
+ZSH_THEME_GIT_PROMPT_DIVERGED=" ⇕"
 
-is_git() {
-  command git rev-parse --is-inside-work-tree &>/dev/null
-}
+function _git_time_since_commit() {
+# Only proceed if there is actually a commit.
+  if git log -1 > /dev/null 2>&1; then
+    # Get the last commit.
+    last_commit=$(git log --pretty=format:'%at' -1 2> /dev/null)
+    now=$(date +%s)
+    seconds_since_last_commit=$((now-last_commit))
 
-git_status() {
+    # Totals
+    minutes=$((seconds_since_last_commit / 60))
+    hours=$((seconds_since_last_commit/3600))
 
-  local INDEX git_status=""
-  INDEX=$(command git status --porcelain -b 2> /dev/null)
+    # Sub-hours and sub-minutes
+    days=$((seconds_since_last_commit / 86400))
+    sub_hours=$((hours % 24))
+    sub_minutes=$((minutes % 60))
 
-  # Check for untracked files
-  if $(echo "$INDEX" | command grep -E '^\?\? ' &> /dev/null); then
-    git_status="?"
-  fi
+    if [ $hours -gt 24 ]; then
+      commit_age="${days}d"
+    elif [ $minutes -gt 60 ]; then
+      commit_age="${sub_hours}h${sub_minutes}m"
+    else
+      commit_age="${minutes}m"
+    fi
 
-  # Check for staged files
-  if $(echo "$INDEX" | command grep '^A[ MDAU] ' &> /dev/null); then
-    git_status="+"
-  elif $(echo "$INDEX" | command grep '^M[ MD] ' &> /dev/null); then
-    git_status="+"
-  elif $(echo "$INDEX" | command grep '^UA' &> /dev/null); then
-    git_status="+"
-  fi
-
-  # Check for modified files
-  if $(echo "$INDEX" | command grep '^[ MARC]M ' &> /dev/null); then
-    git_status="!"
-  fi
-
-  # Check for renamed files
-  if $(echo "$INDEX" | command grep '^R[ MD] ' &> /dev/null); then
-    git_status="»"
-  fi
-
-  # Check for deleted files
-  if $(echo "$INDEX" | command grep '^[MARCDU ]D ' &> /dev/null); then
-    git_status="✘"
-  elif $(echo "$INDEX" | command grep '^D[ UM] ' &> /dev/null); then
-    git_status="✘"
-  fi
-
-  # Check for stashes
-  if $(command git rev-parse --verify refs/stash >/dev/null 2>&1); then
-    git_status="$"
-  fi
-
-  # Check for unmerged files
-  if $(echo "$INDEX" | command grep '^U[UDA] ' &> /dev/null); then
-    git_status="="
-  elif $(echo "$INDEX" | command grep '^AA ' &> /dev/null); then
-    git_status="="
-  elif $(echo "$INDEX" | command grep '^DD ' &> /dev/null); then
-    git_status="="
-  elif $(echo "$INDEX" | command grep '^[DA]U ' &> /dev/null); then
-    git_status="="
-  fi
-
-  # Check whether branch is ahead
-  local is_ahead=false
-  if $(echo "$INDEX" | command grep '^## [^ ]\+ .*ahead' &> /dev/null); then
-    is_ahead=true
-  fi
-
-  # Check whether branch is behind
-  local is_behind=false
-  if $(echo "$INDEX" | command grep '^## [^ ]\+ .*behind' &> /dev/null); then
-    is_behind=true
-  fi
-
-  # Check wheather branch has diverged
-  if [[ "$is_ahead" == true && "$is_behind" == true ]]; then
-    git_status="⇕"
-  else
-    [[ "$is_ahead" == true ]] && git_status="⇡"
-    [[ "$is_behind" == true ]] && git_status="⇣"
-  fi
-
-  if [[ -n $git_status ]]; then
-    # Status prefixes are colorized
-    echo " $git_status"
+    echo " $commit_age"
   fi
 }
 
-prompt_setup() {
-  autoload -Uz colors && colors
-  autoload -Uz vcs_info
-  setopt prompt_su
+autoload -Uz colors && colors
+autoload -Uz vcs_info
+setopt prompt_subst
 
-  # set up exit_code
-  typeset -g void_exit_code
-  precmd_void_exit_code() { if (( $? == 0 )); then void_exit_code="blue"; else void_exit_code="red"; fi
+# set up exit_code
+typeset -g void_exit_code
+precmd_void_exit_code() { if (( $? == 0 )); then void_exit_code="blue"; else void_exit_code="red"; fi }
 
-  # handle vcs_info
-  precmd_vcs_info() { vcs_info  }
-  precmd_functions+=( precmd_vcs_info precmd_void_exit_code  )
+# handle vcs_info
+precmd_vcs_info() { vcs_info  }
+precmd_functions+=( precmd_vcs_info precmd_void_exit_code  )
 
-  # show git branch name
-  zstyle ':vcs_info:*' enable git
-  zstyle ':vcs_info:git*' formats '%b'
-  #zstyle ':vcs_info:*:*' formats ' · %b'
+export PS1='%{$fg[$void_exit_code]%}›%{$reset_color%} '
+export RPROMPT='%{$fg[blue]%}$(basename $PWD)$vcs_info_msg_0_$(git_prompt_status)$(_git_time_since_commit)%{$reset_color%}'
 
-  export PS1='%{$fg[$void_exit_code]%}›%{$reset_color%} '
-  export RPROMPT='%{$fg[blue]%}$(basename $PWD)$vcs_info_msg_0_%{$reset_color%}'
-
-
-}
-
-prompt_setup "$@"
+# show git branch name
+zstyle ':vcs_info:*:*' formats ' · %b'
